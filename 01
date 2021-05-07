@@ -1,0 +1,112 @@
+
+nets=[]
+accs=[]
+losses=[]
+
+# n_splits分割（ここでは5分割）してCV
+kf = KFold(n_splits=5, shuffle=True, random_state=2020)
+
+for train_idx, valid_idx in kf.split(img_train_val):
+
+
+  device = torch.device("cuda")
+  net = Net_f()
+  net = net.to(device)
+  criterion = nn.CrossEntropyLoss()
+  optimizer = optim.SGD(net.parameters(), lr=0.0001, momentum=0.9, weight_decay=0.005)
+
+  train_loss_value_f=[]      #trainingのlossを保持するlist
+  train_acc_value_f=[]       #trainingのaccuracyを保持するlist
+  valid_loss_value_f=[]       #validationのlossを保持するlist
+  valid_acc_value_f=[]        #validationのaccuracyを保持するlist 
+  test_loss_value_f=[]       #testのlossを保持するlist
+  test_acc_value_f=[]        #testのaccuracyを保持するlist 
+  
+  # train_idx、valid_idxにはインデックスの値が格納されている
+  
+  img_tr_train=img_train_val[train_idx, :, :, :]
+  img_tr_valid=img_train_val[valid_idx, :, :, :]
+  label_tr_train=label_train_val[train_idx]
+  label_tr_valid=label_train_val[valid_idx]
+  
+  
+  tr_dataset=SomeDataset(img_tr_train,label_tr_train)
+  val_dataset=SomeDataset(img_tr_valid,label_tr_valid)
+    
+  train_loader=DataLoader(tr_dataset,batch_size=100,shuffle=True)
+
+  val_loader=DataLoader(val_dataset,batch_size=100,shuffle=False)
+  
+
+  
+  for epoch in range(100):
+    print("epoch:",epoch)
+    sum_loss_train=0.0   #lossの合計
+    sum_correct_train=0.0   #正解数の合計
+    sum_total_train=0.0   #dataの数の合計
+    #training
+    for (inputs, labels) in train_loader:
+      inputs, labels = inputs.to(device), labels.to(device)
+      inputs=inputs.float()
+      optimizer.zero_grad()
+      outputs = net(inputs)
+      loss = criterion(outputs, labels)
+      loss.backward()
+      optimizer.step()
+      sum_loss_train += loss.item()                            #lossを足していく
+      _, predicted = outputs.max(1)                      #出力の最大値の添字(予想位置)を取得
+      sum_total_train += labels.size(0)                        #labelの数を足していくことでデータの総和を取る
+      sum_correct_train += (predicted == labels).sum().item()  #予想位置と実際の正解を比べ,正解している数だけ足す
+    print("train mean loss={}, accuracy={}".format(sum_loss_train*100/len(train_loader.dataset), float(sum_correct_train/sum_total_train)))  #lossとaccuracy出力
+    train_loss_value_f.append(sum_loss_train*100/len(train_loader.dataset))  #traindataのlossをグラフ描画のためにlistに保持
+    train_acc_value_f.append(float(sum_correct_train/sum_total_train))   #traindataのaccuracyをグラフ描画のためにlistに保持
+
+    sum_loss_valid=0.0   #lossの合計
+    sum_correct_valid=0.0   #正解数の合計
+    sum_total_valid=0.0   #dataの数の合計
+    #validation(パラメータ更新がないようになっている)
+    for (inputs, labels) in val_loader:
+      inputs, labels = inputs.to(device), labels.to(device)
+      inputs=inputs.float()
+      optimizer.zero_grad()
+      outputs = net(inputs)
+      loss = criterion(outputs, labels)
+      sum_loss_valid += loss.item()                            #lossを足していく
+      _, predicted = outputs.max(1)                      #出力の最大値の添字(予想位置)を取得
+      sum_total_valid += labels.size(0)                        #labelの数を足していくことでデータの総和を取る
+      sum_correct_valid += (predicted == labels).sum().item()  #予想位置と実際の正解を比べ,正解している数だけ足す
+    print("valid mean loss={}, accuracy={}".format(sum_loss_valid*100/len(val_loader.dataset), float(sum_correct_valid/sum_total_valid)))  #lossとaccuracy出力
+    valid_loss_value_f.append(sum_loss_valid*100/len(val_loader.dataset))  #traindataのlossをグラフ描画のためにlistに保持
+    valid_acc_value_f.append(float(sum_correct_valid/sum_total_valid))   #traindataのaccuracyをグラフ描画のためにlistに保持
+
+  accs.append(float(sum_correct_valid/sum_total_valid))
+  losses.append(float(sum_loss_valid*100/len(val_loader.dataset)))
+
+    
+  plt.plot(range(100), train_loss_value_f)
+  plt.plot(range(100), valid_loss_value_f, c='#00ff00')
+  plt.xlim(0, 100)
+  plt.ylim(0, 2.5)
+  plt.xlabel('EPOCH')
+  plt.ylabel('LOSS')
+  plt.legend(['train loss', 'valid loss'])
+  plt.title('loss')
+  plt.savefig("loss_image.png")
+  plt.clf()
+
+  plt.plot(range(100), train_acc_value_f)
+  plt.plot(range(100), valid_acc_value_f, c='#00ff00')
+  plt.xlim(0, 100)
+  plt.ylim(0, 1)
+  plt.xlabel('EPOCH')
+  plt.ylabel('ACCURACY')
+  plt.legend(['train acc', 'valid acc'])
+  plt.title('accuracy')
+  plt.savefig("accuracy_image.png")
+
+print("平均accuracy: {}".format(mean(accs)))
+print("平均loss: {}".format(mean(losses)))
+
+# CVの評価としてfold毎のvalidの結果を平均したものを使う（他にも手法はあるが）
+#print("oof acc: {:4f}".format(mean(accs)))
+#print("oof loss: {:4f}".format(mean(losses)))
